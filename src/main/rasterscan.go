@@ -1,15 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"github.com/nfnt/resize"
 	"image"
 	. "image/color"
 	"image/png"
 	"math"
 	"math/cmplx"
 	"os"
-	"fmt"
-	"github.com/nfnt/resize"
+	"runtime"
 	"strconv"
+	"sync"
 )
 
 const SIZE int = 1600
@@ -115,8 +117,8 @@ func distanceEstimator(c complex128, maxIterations int, escapeRadius float64) (f
 	
 }
 
-func plot(img *image.RGBA, location *Coordinate, maxIterations int) {
-	for x := 0; x < SIZE; x++ {
+func plot(img *image.RGBA, location *Coordinate, maxIterations, start, finish int, wg *sync.WaitGroup) {
+	for x := start; x < finish; x++ {
 		for y := 0; y < SIZE; y++ {
 			r, i := convert(x, y, location)
 			c := complex(r, i)
@@ -198,6 +200,8 @@ func plot(img *image.RGBA, location *Coordinate, maxIterations int) {
 			}
 		}
 	}
+
+	wg.Done()
 	
 }
 
@@ -235,9 +239,28 @@ func main() {
 		i = getFloat(os.Args[2])
 		size = getFloat(os.Args[3])
 	}
+
+	cpus := runtime.NumCPU()
+	chunkSize := SIZE/cpus
 	
-	plot(img, NewCoordinate(r,i,size), 10000)
+	fmt.Printf("Spawning %v goroutine(s)\n", cpus)
+
+	var wg sync.WaitGroup
+	wg.Add(cpus)
+	for j:=0; j<cpus; j++ {
+		var start, stop int
+		start = j*chunkSize
+		if j < cpus-1 {
+			stop = (j+1)*chunkSize
+		} else {
+			stop = SIZE
+		}
+		
+		go plot(img, NewCoordinate(r,i,size), 10000, start, stop, &wg)
+	}
 	
+	wg.Wait()
+
 	// The final image is half the size of the generated one.
 	// This way we get a crisp anti-aliased image
 	downscaled := resize.Resize(uint(SIZE/2), 0, img, resize.Lanczos3)
